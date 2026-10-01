@@ -27,8 +27,12 @@ _TAG = re.compile(r"<[^>]{1,200}>")
 PATTERNS: list[tuple[str, float, re.Pattern]] = [
     ("override_instructions", 0.6, re.compile(
         r"\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(previous|prior|above|all|system|earlier)\b[^.\n]{0,20}\b(instructions?|rules?|prompts?|directives?)", re.I)),
-    ("role_hijack", 0.5, re.compile(r"\b(you are now|act as|pretend to be|from now on you)\b", re.I)),
-    ("system_prompt_probe", 0.5, re.compile(r"\b(system prompt|developer message|hidden instructions?|reveal your (rules|instructions|prompt))\b", re.I)),
+    ("role_hijack", 0.5, re.compile(r"\b(you are now|pretend to be|from now on you)\b", re.I)),
+    # weak signals: common in legitimate text, only meaningful alongside other indicators
+    ("role_phrase", 0.25, re.compile(r"\bact as\b", re.I)),
+    ("prompt_mention", 0.3, re.compile(r"\b(system prompt|developer message|hidden instructions?)\b", re.I)),
+    ("system_prompt_probe", 0.6, re.compile(
+        r"\b(reveal|print|show|repeat|output)\b[^.\n]{0,20}\b(your|the)\b[^.\n]{0,20}\b(system prompt|rules|instructions|prompt)\b", re.I)),
     ("fake_role_marker", 0.5, re.compile(r"(^|\n)\s*(system|assistant|developer)\s*:|<\|?(im_start|system)\|?>|\[/?INST\]", re.I)),
     ("tool_invocation", 0.45, re.compile(
         r"\b(call|invoke|run|execute|use)\b[^.\n]{0,30}\b(tool|function|email_send|crm_|refund_issue|http_request|python_sandbox|file_write|slack_message)", re.I)),
