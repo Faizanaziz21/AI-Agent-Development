@@ -89,6 +89,19 @@ def retrieve_docs(c: Ctx) -> dict:
 
 
 _STEP = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*])\s+(.{10,240})$")
+_ACTION = re.compile(r"\b(upgrade|update|install|apply|re-apply|enable|disable|add|remove|set|open|contact|restart|roll back|"
+                     r"rolling back|fixe[sd]|resolve[sd]?)\b", re.I)
+_TERM = re.compile(r"[a-z0-9]{3,}")
+
+
+def _best_sentences(text: str, query_terms: set[str], n: int = 2) -> list[str]:
+    """Most relevant, actionable sentences of a passage, kept in document order."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text)
+                 if 30 < len(s.strip()) < 240 and "REDACTED" not in s and not s.lstrip().startswith("#")]
+    scored = [(len(query_terms & set(_TERM.findall(s.lower()))) + (2 if _ACTION.search(s) else 0), i, s)
+              for i, s in enumerate(sentences)]
+    top = sorted(scored, key=lambda x: (-x[0], x[1]))[:n]
+    return [s for _, _, s in sorted(top, key=lambda x: x[1])]
 
 
 def propose_solution(c: Ctx) -> dict:
@@ -96,10 +109,11 @@ def propose_solution(c: Ctx) -> dict:
     t = ticket(c)
     passages = [p for p in kb.get("passages", []) if p.get("injection_risk", 0) < 0.5] or kb.get("passages", [])
     steps, cited = [], []
+    terms = set(_TERM.findall(f"{t.get('subject', '')} {t.get('body', '')}".lower()))
     for p in passages[:3]:
         found = [s.strip() for s in _STEP.findall(p.get("text", "")) if "REDACTED" not in s]
         if not found:
-            found = [s.strip() for s in re.split(r"(?<=[.!?])\s+", p.get("text", "")) if 30 < len(s) < 240 and "REDACTED" not in s][:2]
+            found = _best_sentences(p.get("text", ""), terms)
         for s in found[:3]:
             steps.append(f"{s} [{p['id']}]")
         if found:
