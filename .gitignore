@@ -10,3 +10,8 @@ dist/
 backend/data/
 .env
 frontend/test-results/
+
+# .NET sample
+bin/
+obj/
+*.user
