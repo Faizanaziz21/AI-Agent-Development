@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import socket
 import time
+from datetime import UTC, datetime, timedelta
 
 from app.core.config import get_settings
 from app.core.db import session_scope
 from app.core.events import EventType, emit
 from app.core.telemetry import ACTIVE_WORKERS, RECOVERIES, TASK_DURATION, span
-from app.models import Project, ProjectStatus, Task
+from app.models import Project, ProjectStatus, Task, TaskStatus
 from app.services import orchestrator
 from app.services.agents.runtime import AgentRuntime, RunResult
 from app.services.planning.planner import PlanningFailed, create_plan
@@ -128,7 +130,13 @@ class WorkerPool:
             return
         t0 = time.perf_counter()
         async with session_scope() as s:
-            agent_key = (await s.get(Task, task_id)).agent_key
+            task = await s.get(Task, task_id)
+            agent_key = task.agent_key
+            chaos = (await s.get(Project, task.project_id)).chaos or {}
+            crashes = int((task.checkpoint or {}).get("simulated_crashes", 0))
+        if crashes < 1 and random.random() < float(chaos.get("worker_crash_rate", 0)):
+            await self._simulate_crash(task_id, worker_id)
+            return
         with span("task.run", task=task_id, agent=agent_key, worker=worker_id):
             try:
                 result = await self.runtime.run(task_id, worker_id)
@@ -139,6 +147,28 @@ class WorkerPool:
                 result = RunResult("failed_transient", error=f"runtime error: {type(exc).__name__}: {exc}")
         TASK_DURATION.labels(agent_key).observe(time.perf_counter() - t0)
         await orchestrator.handle_result(task_id, result)
+
+    async def _simulate_crash(self, task_id: str, worker_id: str) -> None:
+        """Chaos: kill the agent mid-run without reporting a result, as if the worker process died.
+
+        The lease is expired rather than released, so the task is only recovered through the
+        same path a real crash takes: the recovery sweep re-queues it and the runtime resumes
+        from the last checkpoint."""
+        run = asyncio.create_task(self.runtime.run(task_id, worker_id))
+        await asyncio.sleep(random.uniform(0.05, 0.4))
+        run.cancel()
+        await asyncio.gather(run, return_exceptions=True)
+        async with session_scope() as s:
+            t = await s.get(Task, task_id)
+            if t is None or t.status != TaskStatus.RUNNING or t.lease_owner != worker_id:
+                return
+            cp = dict(t.checkpoint or {})
+            cp["simulated_crashes"] = int(cp.get("simulated_crashes", 0)) + 1
+            t.checkpoint = cp
+            t.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            emit(s, t.org_id, EventType.AGENT_STEP, project_id=t.project_id, task_id=t.id, agent_key=t.agent_key,
+                 message=f"Simulated worker crash on {worker_id} while running '{t.title}'", payload={"phase": "CRASH", "chaos": True})
+        RECOVERIES.labels("simulated_crash").inc()
 
 
 _pool: WorkerPool | None = None

@@ -169,7 +169,8 @@ class AgentRuntime:
                 s.add(ex_row)
                 await s.flush()
                 cp = {"attempt": task.attempt, "execution_id": ex_row.id, "iteration": 0, "observations": [],
-                      "signatures": {}, "malformed": 0, "seq": 0, "tainted": [], "pending_action": cp.get("pending_action")}
+                      "signatures": {}, "malformed": 0, "seq": 0, "tainted": [], "pending_action": cp.get("pending_action"),
+                      "simulated_crashes": cp.get("simulated_crashes", 0)}
                 emit(s, task.org_id, EventType.AGENT_STARTED, project_id=task.project_id, task_id=task.id, agent_key=agent.key,
                      message=f"{agent.name} started '{task.title}' (attempt {task.attempt})", payload={"worker": worker_id})
             else:
