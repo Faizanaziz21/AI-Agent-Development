@@ -44,6 +44,10 @@ class Settings(BaseSettings):
 
     otel_exporter_endpoint: str | None = None
     seed_demo: bool = True
+    # Development convenience: create tables on startup. Production runs `alembic upgrade head` instead.
+    auto_create_schema: bool = True
+    # Serve the built frontend (frontend/dist) from the API process when set.
+    static_dir: str | None = None
     log_level: str = "INFO"
 
     @property
