@@ -281,6 +281,8 @@ class ToolExecutor:
             ctx.tainted_values.update(v.lower().rstrip(".,") for v in _EMAIL.findall(blob))
             ctx.tainted_values.update(v.lower().rstrip(".,") for v in _URL.findall(blob))
             result = _neutralize_tree(result, flags)
+            if isinstance(result, dict) and result.get("neutralised_passages"):
+                flags.append("injection:retrieval_neutralised")
             if any(f.startswith("injection:") for f in flags):
                 flags = sorted(set(flags))
                 INJECTION_FLAGS.labels(tool_name).inc()

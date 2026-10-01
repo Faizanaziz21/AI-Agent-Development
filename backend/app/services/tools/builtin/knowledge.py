@@ -47,6 +47,8 @@ class KnowledgeSearchTool(Tool):
         return {
             "query": args.query,
             "access_scope": sorted(allowed),
+            # passages whose instruction-like content was already redacted at retrieval time
+            "neutralised_passages": [f"S{i + 1}" for i, p in enumerate(passages) if p.injection_risk >= 0.5],
             "passages": [
                 {**p.citation(i + 1), "text": p.text, "classification": p.classification, "source_type": p.source_type,
                  "semantic_rank": p.semantic_rank, "keyword_rank": p.keyword_rank,
