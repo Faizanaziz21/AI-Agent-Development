@@ -13,6 +13,7 @@ import re
 
 from app.services.model_gateway.local_engine import planning, qa, research, sales, support
 from app.services.model_gateway.local_engine.common import Ctx, call, escalate, final
+from app.services.rag.embeddings import _stem, tokenize
 
 CONTEXT_MARKER = "TASK_CONTEXT:"
 
@@ -61,15 +62,16 @@ class LocalReasoningEngine:
         passages = raw.get("passages", [])
         if not passages:
             return {"answer": "I could not find this in the knowledge base.", "citations": [], "confidence": 0.2}
-        qt = set(re.findall(r"[a-z]{4,}", q.lower()))
+        qt = {_stem(t) for t in tokenize(q)}
         sentences = []
-        for p in passages:
+        for rank, p in enumerate(passages):
             for s in re.split(r"(?<=[.!?])\s+|\n+", p["text"]):
                 s = s.strip(" -*#")
                 if len(s) < 25 or "REDACTED" in s:
                     continue
-                overlap = len(qt & set(re.findall(r"[a-z]{4,}", s.lower())))
-                sentences.append((overlap, -len(sentences), s, p["id"]))
+                overlap = len(qt & {_stem(t) for t in tokenize(s)})
+                # prefer sentences from higher-ranked passages, then document order
+                sentences.append((overlap - rank * 0.1, -len(sentences), s, p["id"]))
         sentences.sort(reverse=True)
         picked = [x for x in sentences if x[0] > 0][:4] or sentences[:2]
         answer = " ".join(f"{s} [{pid}]" for _, _, s, pid in picked)
