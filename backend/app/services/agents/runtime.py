@@ -69,6 +69,12 @@ def _signature(tool: str, args: dict) -> str:
     return hashlib.sha1(f"{tool}:{json.dumps(args, sort_keys=True, default=str)}".encode()).hexdigest()[:16]
 
 
+def _input_hash(data: dict | None) -> str:
+    """Identity of a task's work for cycle detection; runtime bookkeeping keys (`_delegated_by`, ...) are excluded."""
+    public = {k: v for k, v in (data or {}).items() if not k.startswith("_")}
+    return hashlib.sha1(json.dumps(public, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
 def _summarize(result: dict | None, limit: int = 240) -> str:
     if not result:
         return ""
@@ -211,8 +217,7 @@ class AgentRuntime:
     def _ancestors(task: Task, by_id: dict[str, Task]) -> list[dict]:
         out, cur, guard = [], task, 0
         while cur is not None and guard < 50:
-            out.append({"agent_key": cur.agent_key, "capability": cur.capability,
-                        "input_hash": hashlib.sha1(json.dumps(cur.input, sort_keys=True, default=str).encode()).hexdigest()[:12]})
+            out.append({"agent_key": cur.agent_key, "capability": cur.capability, "input_hash": _input_hash(cur.input)})
             cur = by_id.get(cur.parent_task_id) if cur.parent_task_id else None
             guard += 1
         return out
@@ -420,7 +425,7 @@ class AgentRuntime:
                 problems.append(f"unknown agent '{sub.agent_key}'")
             elif "*" not in agent.can_delegate_to and sub.agent_key not in agent.can_delegate_to:
                 problems.append(f"{agent.key} may not delegate to {sub.agent_key}")
-            ih = hashlib.sha1(json.dumps(sub.input, sort_keys=True, default=str).encode()).hexdigest()[:12]
+            ih = _input_hash(sub.input)
             if any(a["agent_key"] == sub.agent_key and a["capability"] == sub.capability and a["input_hash"] == ih for a in st["ancestors"]):
                 problems.append(f"delegation cycle: '{sub.capability}' already in ancestor chain")
         if problems:
