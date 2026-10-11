@@ -120,13 +120,21 @@ def enrich_companies(c: Ctx) -> dict:
             "source_url": co.get("source_url"), "provenance": prov,
         })
     if "entity_upsert" in c.tools and not c.attempted("entity_upsert"):
-        return call("entity_upsert", {"entities": [
-            {"type": "company", "name": r["name"], "source": r["source_url"] or "company_lookup", "confidence": 0.85,
-             "attributes": {"industry": r["industry"], "employees": r["employees"], "region": r["region"],
-                            "country": r["country"], "domain": r["domain"],
-                            "technologies": [t["name"] for t in r["tech_indicators"] if t["confidence"] >= 0.7]}}
-            for r in records[:200]]},
-            "Persist enriched firmographics to structured memory with provenance.")
+        entities, rels, linked = [], [], {}
+        for r in records[:160]:
+            techs = [t["name"] for t in r["tech_indicators"] if t["confidence"] >= 0.7]
+            entities.append({"type": "company", "name": r["name"], "source": r["source_url"] or "company_lookup", "confidence": 0.85,
+                             "attributes": {"industry": r["industry"], "employees": r["employees"], "region": r["region"],
+                                            "country": r["country"], "domain": r["domain"], "technologies": techs}})
+            if r["industry"]:
+                linked.setdefault(("industry", r["industry"]), []).append((r["name"], "in_industry"))
+            for t in techs:
+                linked.setdefault(("technology", t), []).append((r["name"], "uses"))
+        for (etype, name), members in linked.items():
+            entities.append({"type": etype, "name": name, "source": "company_lookup", "confidence": 0.8, "attributes": {}})
+            rels += [{"source": company, "target": name, "type": rtype} for company, rtype in members]
+        return call("entity_upsert", {"entities": entities[:200], "relationships": rels[:400]},
+                    "Persist enriched firmographics, industries and verified technologies to structured memory with provenance.")
     return final({"companies": records, "count": len(records), "verified_by_registry": len(verified),
                   "still_missing": [r["domain"] for r in records if r["employees"] is None]},
                  f"Enriched {len(records)} companies; {len(verified)} headcounts verified via registry",

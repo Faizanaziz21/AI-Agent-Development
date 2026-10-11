@@ -3,7 +3,7 @@
 from sqlalchemy import or_, select
 
 from app.core.db import session_scope
-from app.models import Approval, Evaluation, EventRecord, OutboundMessage, Task, ToolCall
+from app.models import Approval, Entity, Evaluation, EventRecord, OutboundMessage, Relationship, Task, ToolCall
 from app.services import orchestrator
 from app.services.projects import DEMO_TICKETS, TEMPLATES, create_project, create_support_ticket
 from tests.conftest import wait_for_project
@@ -29,7 +29,7 @@ async def test_b2b_sales_intelligence_team(sentinel, pool):
     assert p.status == "COMPLETED", p.error
     tasks = await _rows(Task, Task.project_id == pid)
     assert len({t.agent_key for t in tasks}) >= 5, "work is spread across specialist agents"
-    assert all(t.status in ("COMPLETED", "SKIPPED") for t in tasks)
+    assert all(t.status == "COMPLETED" for t in tasks)
 
     evals = await _rows(Evaluation, Evaluation.project_id == pid)
     assert evals and all(e.overall >= 0 for e in evals)
@@ -49,6 +49,11 @@ async def test_b2b_sales_intelligence_team(sentinel, pool):
     assert any(a.status == "APPROVED" and "email" in a.title.lower() for a in appr), "no email is sent without an approval record"
     sent = await _rows(OutboundMessage, OutboundMessage.project_id == pid, OutboundMessage.status == "sent")
     assert 0 < len(sent) <= 20
+
+    entities = await _rows(Entity, Entity.project_id == pid)
+    assert {"company", "industry"} <= {e.type for e in entities}
+    rels = await _rows(Relationship, Relationship.project_id == pid)
+    assert any(r.type == "in_industry" for r in rels), "the entity graph links companies to their industries"
 
 
 async def test_customer_support_team_with_poisoned_knowledge(sentinel, pool):
