@@ -145,8 +145,9 @@ project timeline:
 - an `INJECTION_DETECTED` event flags the passage, and the agent receives it with the
   instruction-like sentences redacted;
 - the accepted answer in the same thread (upgrade the agent to 4.2) is still used and cited;
-- the attacker's address is recorded as tainted, so even if a model tried to email it, the
-  executor would force a high-risk human approval naming the untrusted source.
+- the attacker's address is removed with the redacted sentence, so it never reaches the agent.
+  Had it arrived through content that was not flagged, taint tracking would still force a
+  high-risk human approval before any email to an address first seen in untrusted content.
 
 See [SECURITY.md](SECURITY.md#3-prompt-injection-defences) for how each layer works.
 
