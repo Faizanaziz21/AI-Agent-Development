@@ -46,7 +46,9 @@ async def summary(p: Principal = Depends(current_principal), s: AsyncSession = D
 async def get_approval(approval_id: str, p: Principal = Depends(current_principal), s: AsyncSession = Depends(get_session)):
     a = await get_owned(s, Approval, approval_id, p)
     task = await s.get(Task, a.task_id) if a.task_id else None
+    project = await s.get(Project, a.project_id) if a.project_id else None
     return to_dict(a, extra={"task": to_dict(task, exclude={"checkpoint"}) if task else None,
+                             "project_name": project.name if project else None,
                              "can_decide": a.status == "PENDING" and can_decide_approval(p.role, a.required_role)})
 
 
