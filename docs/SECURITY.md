@@ -109,7 +109,7 @@ sentences containing indicators are replaced with
 `[REDACTED: instruction-like content removed by AgentOS guardrail]` before the text reaches a
 model. Retrieved knowledge chunks with `injection_risk ≥ 0.5` are neutralised the same way.
 Each detection emits an `INJECTION_DETECTED` event (visible in the run timeline) and increments
-`agentos_injection_flags_total{tool}`.
+`agentos_prompt_injection_flags_total{source}` (labelled with the tool name).
 
 ### 3.4 Untrusted envelopes and the system guard
 
@@ -354,7 +354,7 @@ anchor the chain head externally (for example to WORM object storage).
 | Upload limit | Knowledge uploads above 20 MB are rejected. | `MAX_UPLOAD_BYTES` in `routes/knowledge.py` |
 | Request validation | Pydantic models bound string lengths and value ranges on all inputs. | — |
 | Runaway agents | Per-agent iteration limits, loop detection, delegation depth and fan-out limits, per-project task cap. | `AGENTOS_MAX_DELEGATION_DEPTH`, `AGENTOS_MAX_CHILDREN_PER_TASK`, `AGENTOS_MAX_TASKS_PER_PROJECT` |
-| Runaway cost | Per-agent token/cost budgets, per-project and per-org budgets with model downgrade at 80% and hard stop at 100%. | Project/org budget settings |
+| Runaway cost | Per-agent token/cost budgets, per-project and per-org budgets with model downgrade at 80%; at 100% the task pauses for a budget-extension approval. | Project/org budget settings |
 
 The sign-in throttle keys on the email address, so a password-spraying attacker who targets many
 accounts is bounded by the IP-keyed rate limit instead; an attacker who knows an email address can
