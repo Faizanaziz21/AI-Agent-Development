@@ -58,7 +58,7 @@ describe("replayState", () => {
   it("ends with the final project and task states", () => {
     const end = replayState(events, events.length - 1);
     expect(end.projectStatus).toBe("COMPLETED");
-    expect(end.statuses.get("b")).toBe("SKIPPED");
+    expect(end.statuses.get("b")).toBe("BLOCKED");
     expect(replayState(events, 999).projectStatus).toBe("COMPLETED");
   });
 });

@@ -19,7 +19,7 @@ export const STATUS_STYLES: Record<string, { badge: string; dot: string; node: s
   COMPLETED: { badge: "bg-emerald-50 text-emerald-700 ring-emerald-200", dot: "bg-emerald-500", node: "border-emerald-300 bg-white" },
   FAILED: { badge: "bg-red-50 text-red-700 ring-red-200", dot: "bg-red-500", node: "border-red-400 bg-red-50" },
   CANCELLED: { badge: "bg-slate-100 text-slate-500 ring-slate-200", dot: "bg-slate-400", node: "border-slate-300 bg-slate-50 opacity-70" },
-  SKIPPED: { badge: "bg-slate-100 text-slate-500 ring-slate-200", dot: "bg-slate-300", node: "border-slate-200 bg-slate-50 opacity-60" },
+  BLOCKED: { badge: "bg-slate-100 text-slate-500 ring-slate-200", dot: "bg-slate-300", node: "border-slate-200 bg-slate-50 opacity-60" },
   APPROVED: { badge: "bg-emerald-50 text-emerald-700 ring-emerald-200", dot: "bg-emerald-500", node: "" },
   REJECTED: { badge: "bg-red-50 text-red-700 ring-red-200", dot: "bg-red-500", node: "" },
   EDITED: { badge: "bg-teal-50 text-teal-700 ring-teal-200", dot: "bg-teal-500", node: "" },

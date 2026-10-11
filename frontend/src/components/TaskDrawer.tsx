@@ -34,7 +34,7 @@ export function TaskDrawer({ taskId, onClose, onSelect }: { taskId: string | nul
     queryKey: ["task", taskId],
     queryFn: () => api.get<TaskDetail>(`/tasks/${taskId}`),
     enabled: !!taskId,
-    refetchInterval: (q) => (q.state.data && ["COMPLETED", "FAILED", "CANCELLED", "SKIPPED"].includes(q.state.data.task.status) ? false : 2_000),
+    refetchInterval: (q) => (q.state.data && ["COMPLETED", "FAILED", "CANCELLED"].includes(q.state.data.task.status) ? false : 2_000),
   });
   const agents = useQuery({ queryKey: ["agents"], queryFn: () => api.get<AgentDefinition[]>("/agents"), enabled: !!taskId && can("project.write") });
   const act = useMutation({
@@ -47,7 +47,7 @@ export function TaskDrawer({ taskId, onClose, onSelect }: { taskId: string | nul
 
   const t = data?.task;
   const steps = data?.executions.flatMap((e) => e.steps.map((s) => ({ ...s, attempt: e.attempt }))) ?? [];
-  const terminal = t && ["COMPLETED", "FAILED", "CANCELLED", "SKIPPED"].includes(t.status);
+  const terminal = t && ["COMPLETED", "FAILED", "CANCELLED"].includes(t.status);
 
   return (
     <Drawer

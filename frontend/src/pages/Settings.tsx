@@ -19,6 +19,12 @@ const ROLE_HINT: Record<string, string> = {
   owner: "Everything, including granting owner",
 };
 
+const CIRCUIT_STYLE: Record<string, string> = {
+  closed: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  half_open: "bg-amber-50 text-amber-700 ring-amber-200",
+  open: "bg-rose-50 text-rose-700 ring-rose-200",
+};
+
 type Tab = "org" | "team" | "secrets" | "system";
 
 export default function Settings() {
@@ -364,7 +370,7 @@ function System() {
             <tr key={p.provider}>
               <td className="px-3 py-2 font-mono text-xs">{p.provider}</td>
               <td className="px-3 py-2"><Badge className={p.available ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-500"}>{p.available ? "configured" : "no credentials"}</Badge></td>
-              <td className="px-3 py-2"><StatusBadge status={p.circuit} /></td>
+              <td className="px-3 py-2"><Badge className={CIRCUIT_STYLE[p.circuit]}>{titleCase(p.circuit)}</Badge></td>
             </tr>
           ))}
         </Table>
