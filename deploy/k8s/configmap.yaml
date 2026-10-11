@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentos-config
+data:
+  AGENTOS_ENV: production
+  AGENTOS_AUTO_CREATE_SCHEMA: "false"
+  # Seeds the two demo tenants on first start; set to "false" for real deployments.
+  AGENTOS_SEED_DEMO: "true"
+  AGENTOS_PROVIDER_ORDER: openai,anthropic,local
+  AGENTOS_EMBEDDING_PROVIDER: local
+  AGENTOS_VECTOR_BACKEND: sql
+  AGENTOS_WORKER_LEASE_SECONDS: "120"
+  AGENTOS_RECOVERY_INTERVAL_SECONDS: "15"
+  AGENTOS_MAX_DELEGATION_DEPTH: "3"
+  AGENTOS_MAX_CHILDREN_PER_TASK: "8"
+  AGENTOS_MAX_TASKS_PER_PROJECT: "200"
+  AGENTOS_RATE_LIMIT_PER_MINUTE: "600"
+  AGENTOS_CORS_ORIGINS: https://agentos.example.com
+  AGENTOS_OTEL_EXPORTER_ENDPOINT: http://otel-collector.observability:4318/v1/traces
+  AGENTOS_LOG_LEVEL: INFO
+  # Object storage shared by API and workers. Leave empty to use the PVC below instead.
+  AGENTOS_S3_BUCKET: ""
+  AGENTOS_OBJECT_STORAGE_PATH: /data/objects

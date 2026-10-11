@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentos
+  labels:
+    app.kubernetes.io/part-of: agentos
+    pod-security.kubernetes.io/enforce: restricted

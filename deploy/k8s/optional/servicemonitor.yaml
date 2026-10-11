@@ -1,0 +1,42 @@
+# Optional: requires the Prometheus Operator (kube-prometheus-stack).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: agentos
+  namespace: agentos
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: In, values: [agentos-api, agentos-worker] }
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+    - port: metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: agentos
+  namespace: agentos
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: agentos
+      rules:
+        - alert: AgentOSQueueBacklog
+          expr: max(agentos_queue_depth) > 200
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: Task queue backlog is growing; scale the worker deployment.
+        - alert: AgentOSHighApiErrorRate
+          expr: sum(rate(agentos_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(agentos_http_requests_total[5m])), 1e-9) > 0.05
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: More than 5% of API requests are failing.

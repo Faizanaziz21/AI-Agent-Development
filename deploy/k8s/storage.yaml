@@ -1,0 +1,11 @@
+# Uploaded documents and generated files, shared by API and worker pods.
+# Requires a ReadWriteMany storage class (EFS, Filestore, Azure Files, NFS). Prefer S3 (AGENTOS_S3_BUCKET) in the cloud.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agentos-objects
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 20Gi

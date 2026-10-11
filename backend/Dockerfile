@@ -6,7 +6,7 @@ RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 COPY pyproject.toml ./
 COPY app ./app
-RUN pip install ".[otlp]"
+RUN pip install ".[otlp,s3]"
 
 FROM python:3.12-slim AS runtime
 ENV PATH=/opt/venv/bin:$PATH \

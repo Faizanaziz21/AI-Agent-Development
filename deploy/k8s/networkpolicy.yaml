@@ -1,0 +1,33 @@
+# Only the web tier and the monitoring namespace may reach the API; workers accept metrics scrapes only.
+# Egress is left open because agents call model providers and external APIs; restrict it with an egress gateway if required.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentos-api-ingress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: agentos-api }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: agentos-web }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+      ports:
+        - { port: 8000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentos-worker-ingress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: agentos-worker }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+      ports:
+        - { port: 9100 }
