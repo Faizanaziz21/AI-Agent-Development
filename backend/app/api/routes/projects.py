@@ -84,10 +84,19 @@ def _project_dict(p: Project, task_counts: dict[str, int] | None = None, pending
                              "pending_approvals": pending})
 
 
+def _default_budget(template: str, org: Organization | None) -> float:
+    """Purpose-built templates carry budgets sized for their workload; custom objectives use the org default."""
+    org_default = (org.settings or {}).get("default_project_budget_usd") if org else None
+    if template == "generic" and org_default:
+        return float(org_default)
+    return float(TEMPLATES[template].get("budget_usd") or org_default or 20.0)
+
+
 @router.get("/projects/templates")
-async def templates(_: Principal = Depends(current_principal)):
-    return {"templates": [{"key": k, **v} for k, v in TEMPLATES.items()], "demo_tickets": DEMO_TICKETS,
-            "chaos_keys": sorted(CHAOS_KEYS)}
+async def templates(p: Principal = Depends(current_principal), s: AsyncSession = Depends(get_session)):
+    org = await s.get(Organization, p.org_id)
+    return {"templates": [{"key": k, **v, "budget_usd": _default_budget(k, org)} for k, v in TEMPLATES.items()],
+            "demo_tickets": DEMO_TICKETS, "chaos_keys": sorted(CHAOS_KEYS)}
 
 
 @router.get("/projects")
@@ -114,10 +123,7 @@ async def new_project(body: ProjectIn, p: Principal = Depends(require("project.w
     if body.template not in TEMPLATES:
         raise HTTPException(422, f"template must be one of {sorted(TEMPLATES)}")
     params = {**TEMPLATES[body.template]["parameters"], **body.parameters}
-    budget = body.budget_usd
-    if budget is None:
-        org = await s.get(Organization, p.org_id)
-        budget = float((org.settings or {}).get("default_project_budget_usd") or 20.0)
+    budget = body.budget_usd if body.budget_usd is not None else _default_budget(body.template, await s.get(Organization, p.org_id))
     proj = await create_project(s, org_id=p.org_id, user_id=p.user_id, name=body.name, objective=body.objective, parameters=params,
                                 template=body.template, budget_usd=budget, chaos=body.chaos, description=body.description)
     await s.commit()

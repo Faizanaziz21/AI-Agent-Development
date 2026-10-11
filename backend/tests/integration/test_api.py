@@ -178,5 +178,10 @@ async def test_org_settings_are_validated_and_default_project_budget_applies(cli
         r = await client.post("/api/v1/projects", headers=h,
                               json={"name": "explicit", "objective": "a valid objective text", "budget_usd": 3, "start": False})
         assert r.json()["budget_usd"] == 3
+        r = await client.post("/api/v1/projects", headers=h,
+                              json={"name": "sized", "objective": "a valid objective text", "template": "b2b_sales", "start": False})
+        assert r.json()["budget_usd"] == 50
+        budgets = {t["key"]: t["budget_usd"] for t in (await client.get("/api/v1/projects/templates", headers=h)).json()["templates"]}
+        assert budgets["generic"] == 7.5 and budgets["b2b_sales"] == 50
     finally:
         await client.patch("/api/v1/org", headers=h, json={"settings": previous})

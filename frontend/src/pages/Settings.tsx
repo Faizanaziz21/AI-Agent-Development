@@ -82,7 +82,10 @@ function OrgSettings() {
         monthly_budget_usd: draft!.budget,
         settings: { quality_threshold: draft!.threshold, max_revisions: draft!.maxRev, default_project_budget_usd: draft!.projectBudget, communication_rules: draft!.rules },
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["org"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org"] });
+      qc.invalidateQueries({ queryKey: ["templates"] });
+    },
   });
   const rotate = useMutation({
     mutationFn: () => api.post<{ webhook_secret: string }>("/org/webhook-secret/rotate"),
@@ -111,7 +114,7 @@ function OrgSettings() {
               <Field label="Monthly model budget (USD)" hint="Hard limit across all projects; reaching it pauses work for a budget approval.">
                 <Input type="number" min={0} step={10} value={draft.budget} onChange={(e) => setDraft({ ...draft, budget: Number(e.target.value) })} />
               </Field>
-              <Field label="Default project budget (USD)" hint="Used when a project is created without an explicit budget.">
+              <Field label="Default project budget (USD)" hint="Pre-filled for custom-objective projects; built-in templates keep budgets sized for their workload.">
                 <Input type="number" min={0.01} step={1} value={draft.projectBudget} onChange={(e) => setDraft({ ...draft, projectBudget: Number(e.target.value) })} />
               </Field>
               <Field label={`Minimum QA score: ${draft.threshold.toFixed(2)}`} hint="Floor applied to every review; individual tasks may require more.">
