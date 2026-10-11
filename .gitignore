@@ -15,3 +15,5 @@ frontend/test-results/
 bin/
 obj/
 *.user
+*.egg-info/
+frontend/dist/
