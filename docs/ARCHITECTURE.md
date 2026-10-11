@@ -234,7 +234,7 @@ sequenceDiagram
   end
   Note over W1: process killed
   W2->>DB: recovery sweep: RUNNING with expired lease
-  W2->>DB: status=QUEUED, attempt+1, keep checkpoint (TASK_RECOVERED)
+  W2->>DB: status=QUEUED, clear lease, keep checkpoint (TASK_RECOVERED)
   W2->>Q: enqueue
   W2->>DB: take lease, resume from checkpoint (completed tool calls are not repeated)
 ```
@@ -246,7 +246,12 @@ sequenceDiagram
   list. Delayed jobs (retry backoff) wait in a sorted set until due.
 - Each worker runs a recovery sweep at start-up and every `AGENTOS_RECOVERY_INTERVAL_SECONDS`.
   It re-queues tasks whose lease expired, tasks stuck in `QUEUED` whose job was lost, elapsed
-  `RETRY_SCHEDULED` tasks, and projects stuck in `PLANNING`.
+  `RETRY_SCHEDULED` tasks, and projects stuck in `PLANNING`, and it resumes `WAITING_APPROVAL`
+  tasks whose tool approval was decided but never applied.
+- A reviewer can decide an approval in the moment between the executor creating it and the task
+  parking in `WAITING_APPROVAL`. Applying a decision only touches parked tasks; when the task
+  parks, the orchestrator checks whether its approval is already decided and resumes it at once.
+  Task rows are locked (`SELECT … FOR UPDATE` on PostgreSQL) for both transitions.
 - Transient failures retry with exponential backoff (1 s, 2 s, 4 s … capped at 60 s) up to
   `max_attempts`, then reassign to the agent's `escalation_rules.alternate_agent` if set, and
   otherwise escalate to a human.
