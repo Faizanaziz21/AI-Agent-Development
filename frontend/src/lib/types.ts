@@ -427,7 +427,7 @@ export interface CostSummary {
   by_agent: Bucket[];
   by_purpose: Bucket[];
   daily: { day: string; cost_usd: number; calls: number }[];
-  by_project: { id: string; name: string; status: string; budget_usd: number; spent_usd: number; tokens: number; ratio: number }[];
+  by_project: { id: string; name: string; status: string; budget_usd: number; spent_usd: number; tokens: number; ratio: number | null }[];
 }
 
 export interface SystemStatus {

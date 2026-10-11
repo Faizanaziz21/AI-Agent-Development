@@ -212,6 +212,70 @@ export function AgentGraph({ nodes, edges, height = 480 }: { nodes: AgentGraphNo
   );
 }
 
+const ENTITY_COLORS: Record<string, string> = {
+  company: "#4f46e5",
+  person: "#0891b2",
+  contact: "#0891b2",
+  product: "#16a34a",
+  customer: "#d97706",
+  ticket: "#e11d48",
+};
+
+export function EntityGraph({ entities, relationships, height = 520, onSelect }: {
+  entities: { id: string; name: string; type: string; trust_level: string }[];
+  relationships: { id: string; source_entity_id: string; target_entity_id: string; type: string }[];
+  height?: number;
+  onSelect?: (id: string) => void;
+}) {
+  const ids = new Set(entities.map((e) => e.id));
+  const rels = relationships.filter((r) => ids.has(r.source_entity_id) && ids.has(r.target_entity_id));
+  const edges = rels.map((r) => ({ source: r.source_entity_id, target: r.target_entity_id }));
+  const nodes = layout(
+    entities.map((e) => {
+      const color = ENTITY_COLORS[e.type] ?? "#64748b";
+      return {
+        id: e.id,
+        position: { x: 0, y: 0 },
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+        data: { label: `${e.name}\n${e.type}` } as Record<string, unknown>,
+        style: {
+          width: 180,
+          fontSize: 11,
+          whiteSpace: "pre-line" as const,
+          borderRadius: 10,
+          border: `2px solid ${color}`,
+          borderStyle: e.trust_level === "unverified" ? "dashed" : "solid",
+          background: "white",
+          color: "#0f172a",
+        },
+      };
+    }),
+    edges,
+    180,
+    48,
+  );
+  const flowEdges: Edge[] = rels.map((r) => ({
+    id: r.id,
+    source: r.source_entity_id,
+    target: r.target_entity_id,
+    label: titleCase(r.type),
+    labelStyle: { fontSize: 10, fill: "#64748b" },
+    style: { stroke: "#94a3b8" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+  }));
+  return (
+    <ReactFlowProvider>
+      <div style={{ height }} className="rounded-xl border border-slate-200 bg-slate-50/50">
+        <ReactFlow nodes={nodes} edges={flowEdges} onNodeClick={(_, n) => onSelect?.(n.id)} nodesDraggable={false} nodesConnectable={false} fitView minZoom={0.1} proOptions={{ hideAttribution: true }}>
+          <Background gap={20} color="#e2e8f0" />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </div>
+    </ReactFlowProvider>
+  );
+}
+
 export function EdgeLegend() {
   return (
     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
