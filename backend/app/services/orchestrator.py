@@ -189,10 +189,23 @@ async def _escalate_or_fail(s, t: Task, error: str) -> None:
                                 "attempts": t.attempt, "agent": t.agent_key})
 
 
+def _attach_tool_decision(t: Task, a: Approval) -> bool:
+    """Hand a decided tool approval to the suspended action in the task checkpoint and re-queue the task."""
+    cp = dict(t.checkpoint or {})
+    pending = dict(cp.get("pending_action") or {})
+    if pending.get("approval_id") != a.id or pending.get("decision"):
+        return False
+    pending["decision"] = {"status": a.status, "payload": a.edited_payload, "comment": a.comment}
+    cp["pending_action"] = pending
+    t.checkpoint = cp
+    _set(t, TaskStatus.QUEUED)
+    return True
+
+
 async def handle_result(task_id: str, result: RunResult) -> None:
     requeue: list[tuple[str, str, int, float]] = []
     async with session_scope() as s:
-        t = await s.get(Task, task_id)
+        t = await s.get(Task, task_id, with_for_update=True)
         if t is None or t.status != TaskStatus.RUNNING:
             return
         project_id = t.project_id
@@ -224,8 +237,13 @@ async def handle_result(task_id: str, result: RunResult) -> None:
                 emit(s, t.org_id, EventType.TASK_COMPLETED, project_id=t.project_id, task_id=t.id, agent_key=t.agent_key,
                      message=f"{t.agent_instance or t.agent_key} ✓ {result.summary}", payload={"confidence": result.confidence})
         elif k == "waiting_approval":
-            _set(t, TaskStatus.WAITING_APPROVAL)
-            t.current_action = "Waiting for human approval"
+            # A fast reviewer can decide before the task is parked; apply_approval skips running tasks.
+            a = await s.get(Approval, result.approval_id) if result.approval_id else None
+            if a is not None and a.status != ApprovalStatus.PENDING and _attach_tool_decision(t, a):
+                requeue.append((t.id, t.org_id, t.priority, 0))
+            else:
+                _set(t, TaskStatus.WAITING_APPROVAL)
+                t.current_action = "Waiting for human approval"
         elif k == "waiting_children":
             _set(t, TaskStatus.WAITING_CHILDREN)
             t.current_action = "Waiting for delegated subtasks"
@@ -316,20 +334,15 @@ async def apply_approval(approval_id: str) -> None:
         a = await s.get(Approval, approval_id)
         if a is None or a.task_id is None:
             return
-        t = await s.get(Task, a.task_id)
+        t = await s.get(Task, a.task_id, with_for_update=True)
         if t is None or t.status in TaskStatus.TERMINAL:
             return
         project_id = t.project_id
         status = a.status
         if a.action_type == "tool":
-            cp = dict(t.checkpoint or {})
-            pending = dict(cp.get("pending_action") or {})
-            if pending.get("approval_id") != a.id:
+            # A task that is still running has not parked yet; handle_result picks the decision up when it does.
+            if t.status != TaskStatus.WAITING_APPROVAL or not _attach_tool_decision(t, a):
                 return
-            pending["decision"] = {"status": status, "payload": a.edited_payload, "comment": a.comment}
-            cp["pending_action"] = pending
-            t.checkpoint = cp
-            _set(t, TaskStatus.QUEUED)
             requeue.append((t.id, t.org_id, t.priority))
         elif a.action_type == "budget_extension":
             if status == ApprovalStatus.APPROVED:
@@ -455,9 +468,11 @@ async def recover(stale_queued_after_s: float = 30.0) -> dict[str, Any]:
     * RETRY_SCHEDULED tasks whose backoff elapsed → QUEUED.
     * QUEUED tasks that may have lost their queue message (e.g. in-memory queue after restart) → re-enqueued.
     * PLANNING projects without a plan → re-enqueue planning.
+    * WAITING_APPROVAL tasks whose tool approval was already decided → resume with the decision.
     """
     now = _now()
-    stats = {"expired_leases": 0, "retries_due": 0, "requeued": 0, "planning": 0}
+    stats = {"expired_leases": 0, "retries_due": 0, "requeued": 0, "planning": 0, "approvals_resumed": 0}
+    decided: list[str] = []
     jobs: list[tuple[str, str, int]] = []
     plans: list[tuple[str, str]] = []
     projects: set[str] = set()
@@ -484,8 +499,17 @@ async def recover(stale_queued_after_s: float = 30.0) -> dict[str, Any]:
             if ts and ts.replace(tzinfo=ts.tzinfo or UTC) < cutoff:
                 plans.append((p.id, p.org_id))
                 stats["planning"] += 1
+        for t in (await s.execute(select(Task).where(Task.status == TaskStatus.WAITING_APPROVAL))).scalars():
+            pending = (t.checkpoint or {}).get("pending_action") or {}
+            if pending.get("approval_id") and not pending.get("decision"):
+                a = await s.get(Approval, pending["approval_id"])
+                if a is not None and a.status != ApprovalStatus.PENDING:
+                    decided.append(a.id)
         for p in (await s.execute(select(Project.id).where(Project.status.in_([ProjectStatus.RUNNING, ProjectStatus.WAITING_APPROVAL])))).scalars():
             projects.add(p)
+    for aid in decided:
+        await apply_approval(aid)
+        stats["approvals_resumed"] += 1
     for tid, org, prio in jobs:
         await enqueue_task(tid, org, prio)
     for pid, org in plans:

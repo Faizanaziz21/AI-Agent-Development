@@ -252,3 +252,58 @@ async def test_org_quality_floor_and_revision_limit_apply_to_reviews(northwind, 
     finally:
         async with session_scope() as s:
             (await s.get(Organization, northwind.org_id)).settings = previous
+
+
+async def _running_task_with_decided_approval(org_id: str) -> tuple[str, str]:
+    from app.models import Task
+
+    _, ids = await make_project(org_id, [{"key": "send", "agent": "outreach", "capability": "t_send"}])
+    async with session_scope() as s:
+        t = await s.get(Task, ids["send"])
+        a = Approval(org_id=org_id, project_id=t.project_id, task_id=t.id, agent_key="outreach", action_type="tool",
+                     tool_name="email_send", title="Send email", status="APPROVED")
+        s.add(a)
+        await s.flush()
+        t.status = "RUNNING"
+        return t.id, a.id
+
+
+async def _park(task_id: str, approval_id: str) -> None:
+    from app.models import Task
+
+    async with session_scope() as s:
+        t = await s.get(Task, task_id)
+        t.checkpoint = {"pending_action": {"tool": "email_send", "arguments": {}, "approval_id": approval_id, "decision": None}}
+
+
+async def test_approval_decided_before_task_parks_resumes_the_task(sentinel):
+    from app.services.queue import InMemoryQueue, set_queue
+
+    set_queue(InMemoryQueue())
+    try:
+        tid, aid = await _running_task_with_decided_approval(sentinel.org_id)
+        await orchestrator.apply_approval(aid)
+        assert (await task(tid)).status == "RUNNING", "a running task is left for handle_result"
+        await _park(tid, aid)
+        await orchestrator.handle_result(tid, orchestrator.RunResult("waiting_approval", approval_id=aid))
+        t = await task(tid)
+        assert t.status == "QUEUED" and t.checkpoint["pending_action"]["decision"]["status"] == "APPROVED"
+    finally:
+        set_queue(None)
+
+
+async def test_recovery_resumes_parked_task_whose_approval_was_already_decided(sentinel):
+    from app.models import Task
+    from app.services.queue import InMemoryQueue, set_queue
+
+    set_queue(InMemoryQueue())
+    try:
+        tid, aid = await _running_task_with_decided_approval(sentinel.org_id)
+        await _park(tid, aid)
+        async with session_scope() as s:
+            (await s.get(Task, tid)).status = "WAITING_APPROVAL"
+        stats = await orchestrator.recover()
+        assert stats["approvals_resumed"] >= 1
+        assert (await task(tid)).status == "QUEUED"
+    finally:
+        set_queue(None)
