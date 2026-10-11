@@ -47,7 +47,7 @@ export function layout<T extends Record<string, unknown>>(nodes: Node<T>[], edge
   });
 }
 
-type TaskNodeData = GraphNode & { selected?: boolean };
+type TaskNodeData = GraphNode & { selected?: boolean } & Record<string, unknown>;
 
 const TaskNode = memo(function TaskNode({ data }: NodeProps<Node<TaskNodeData>>) {
   const st = statusStyle(data.status);
@@ -154,7 +154,7 @@ interface TaskDagProps {
 function TaskDagInner({ nodes, edges, selected, onSelect, height }: TaskDagProps) {
   const structure = nodes.map((n) => n.id).join(",") + "|" + edges.map((e) => e.id).join(",");
   const positioned = useMemo(() => {
-    const base: Node<TaskNodeData>[] = nodes.map((n) => ({ id: n.id, type: "task", position: { x: 0, y: 0 }, data: n }));
+    const base: Node<TaskNodeData>[] = nodes.map((n) => ({ id: n.id, type: "task", position: { x: 0, y: 0 }, data: n as TaskNodeData }));
     return layout(base, edges, NODE_W, NODE_H);
     // re-layout only when the graph structure changes, not on every status tick
   }, [structure]);

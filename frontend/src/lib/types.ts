@@ -504,5 +504,6 @@ export interface SupportTicket extends Base {
 export interface Secret extends Base {
   name: string;
   description: string;
+  preview: string;
   updated_at?: string;
 }
