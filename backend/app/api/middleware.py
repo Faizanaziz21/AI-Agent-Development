@@ -45,6 +45,46 @@ class RateLimiter:
         return count <= self.per_minute, max(0, self.per_minute - count), reset
 
 
+class FailureThrottle:
+    """Counts failures per key (e.g. failed logins per email) and blocks the key for the rest of
+    the window once `max_failures` is reached. Success clears the counter."""
+
+    def __init__(self, max_failures: int, window_seconds: int, redis=None, max_keys: int = 50_000):
+        self.max_failures, self.window, self.redis, self.max_keys = max_failures, window_seconds, redis, max_keys
+        self._local: OrderedDict[str, tuple[float, int]] = OrderedDict()
+
+    async def retry_after(self, key: str) -> int:
+        """Seconds until `key` may try again, or 0 if it is not blocked."""
+        if self.redis is not None:
+            rk = f"agentos:fail:{key}"
+            count = int(await self.redis.get(rk) or 0)
+            return max(1, int(await self.redis.ttl(rk))) if count >= self.max_failures else 0
+        started, count = self._local.get(key, (0.0, 0))
+        remaining = started + self.window - time.time()
+        return max(1, int(remaining)) if count >= self.max_failures and remaining > 0 else 0
+
+    async def failure(self, key: str) -> None:
+        if self.redis is not None:
+            rk = f"agentos:fail:{key}"
+            if await self.redis.incr(rk) == 1:
+                await self.redis.expire(rk, self.window)
+            return
+        now = time.time()
+        started, count = self._local.get(key, (now, 0))
+        if now - started >= self.window:
+            started, count = now, 0
+        self._local[key] = (started, count + 1)
+        self._local.move_to_end(key)
+        while len(self._local) > self.max_keys:
+            self._local.popitem(last=False)
+
+    async def reset(self, key: str) -> None:
+        if self.redis is not None:
+            await self.redis.delete(f"agentos:fail:{key}")
+        else:
+            self._local.pop(key, None)
+
+
 def _limit_key(request: Request) -> str:
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):

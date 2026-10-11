@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     max_revisions: int = 2
 
     rate_limit_per_minute: int = 600
+    login_max_failures: int = 10
+    login_lockout_seconds: int = 900
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
 
     otel_exporter_endpoint: str | None = None

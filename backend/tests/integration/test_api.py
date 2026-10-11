@@ -26,6 +26,20 @@ async def test_login_rejects_bad_credentials_and_unauthenticated_calls(client):
     assert me.json()["user"]["role"] == "owner"
 
 
+async def test_repeated_failed_logins_lock_the_email_and_success_resets(client):
+    bad = {"email": "Nobody@Sentinel.example", "password": "wrong"}
+    for _ in range(10):
+        assert (await client.post("/api/v1/auth/login", json=bad)).status_code == 401
+    r = await client.post("/api/v1/auth/login", json={**bad, "email": "nobody@sentinel.example"})
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+
+    real = {"email": "approver@sentinel.example", "password": "wrong"}
+    for _ in range(2):
+        for _ in range(9):
+            assert (await client.post("/api/v1/auth/login", json=real)).status_code == 401
+        await login(client, "approver@sentinel.example")
+
+
 async def test_rbac_viewer_is_read_only(client):
     h = await login(client, "viewer@sentinel.example")
     assert (await client.get("/api/v1/projects", headers=h)).status_code == 200

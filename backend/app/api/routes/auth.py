@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import client_ip, current_principal, to_dict
+from app.api.middleware import FailureThrottle
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import ROLE_PERMISSIONS, Principal, create_access_token, verify_password
 from app.models import Organization, User
@@ -19,14 +21,30 @@ class LoginIn(BaseModel):
     password: str = Field(max_length=200)
 
 
+def _throttle(request: Request) -> FailureThrottle:
+    app = request.app
+    if getattr(app.state, "login_throttle", None) is None:
+        st = get_settings()
+        app.state.login_throttle = FailureThrottle(st.login_max_failures, st.login_lockout_seconds, redis=app.state.redis)
+    return app.state.login_throttle
+
+
 @router.post("/login")
 async def login(body: LoginIn, request: Request, s: AsyncSession = Depends(get_session)):
-    user = (await s.execute(select(User).where(User.email == body.email.strip().lower()))).scalar_one_or_none()
+    email = body.email.strip().lower()
+    throttle = _throttle(request)
+    wait = await throttle.retry_after(email)
+    if wait:
+        raise HTTPException(429, f"too many failed sign-in attempts; try again in {wait} seconds",
+                            headers={"Retry-After": str(wait)})
+    user = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+        await throttle.failure(email)
         if user is not None:
             await audit.record(s, user.org_id, actor_type="user", actor_id=user.id, action="auth.login_failed",
                                resource_type="user", resource_id=user.id, ip=client_ip(request))
         raise HTTPException(401, "invalid email or password")
+    await throttle.reset(email)
     org = await s.get(Organization, user.org_id)
     await audit.record(s, user.org_id, actor_type="user", actor_id=user.id, action="auth.login", resource_type="user",
                        resource_id=user.id, ip=client_ip(request))
