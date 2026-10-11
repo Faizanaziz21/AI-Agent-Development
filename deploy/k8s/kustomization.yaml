@@ -1,0 +1,27 @@
+# First install / each release:
+#   kubectl apply -f namespace.yaml
+#   kubectl -n agentos create secret generic agentos-secrets ...      (see secret.example.yaml)
+#   kubectl -n agentos apply -f configmap.yaml
+#   kubectl -n agentos delete job agentos-migrate --ignore-not-found  (Jobs are immutable)
+#   kubectl -n agentos apply -f migrate-job.yaml && kubectl -n agentos wait --for=condition=complete job/agentos-migrate --timeout=5m
+#   kubectl apply -k deploy/k8s
+# PostgreSQL and Redis are expected as managed services (RDS / Cloud SQL, ElastiCache / Memorystore).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agentos
+labels:
+  - pairs: { app.kubernetes.io/part-of: agentos }
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - storage.yaml
+  - api.yaml
+  - worker.yaml
+  - web.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+images:
+  - name: ghcr.io/agentos/backend
+    newTag: latest
+  - name: ghcr.io/agentos/frontend
+    newTag: latest

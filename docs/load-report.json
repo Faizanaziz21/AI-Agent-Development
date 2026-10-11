@@ -1,0 +1,55 @@
+{
+  "config": {
+    "projects": 40,
+    "workers": 12,
+    "mix": "support:3,b2b_sales:1",
+    "chaos": 0.1,
+    "arrival_ms": 0,
+    "approval_think_s": 0.5,
+    "timeout": 600
+  },
+  "wall_clock_s": 60.12,
+  "projects": {
+    "total": 40,
+    "finished": 40,
+    "by_status": {
+      "COMPLETED": 40
+    },
+    "throughput_per_min": 39.92
+  },
+  "project_latency_s": {
+    "p50": 45.442,
+    "p95": 57.863,
+    "p99": 58.055,
+    "mean": 46.383
+  },
+  "tasks": {
+    "total": 480,
+    "completed": 480,
+    "retried": 1,
+    "revised": 10,
+    "throughput_per_s": 7.98,
+    "latency_s": {
+      "p50": 0.851,
+      "p95": 3.708
+    }
+  },
+  "queue_depth": {
+    "max": 79,
+    "mean": 29.84
+  },
+  "model_calls": {
+    "total": 1449,
+    "failed": 130,
+    "fallbacks": 129,
+    "tokens": 13842576,
+    "cost_usd": 22.6948
+  },
+  "tool_calls": {
+    "APPROVAL_REQUIRED": 41,
+    "SUCCESS": 713
+  },
+  "approvals_decided": 41,
+  "recovered_tasks": 80,
+  "jobs_processed": 601
+}

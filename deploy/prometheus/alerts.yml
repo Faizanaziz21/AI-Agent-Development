@@ -1,0 +1,71 @@
+groups:
+  - name: agentos
+    rules:
+      - alert: AgentOSApiDown
+        expr: up{job="agentos-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: AgentOS API is not being scraped
+          description: "{{ $labels.instance }} has been unreachable for 2 minutes."
+
+      - alert: AgentOSNoWorkers
+        expr: count(up{job="agentos-worker"} == 1) == 0 or absent(up{job="agentos-worker"})
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: No AgentOS workers are running
+          description: Queued tasks will not execute until at least one worker is available.
+
+      - alert: AgentOSQueueBacklog
+        expr: max(agentos_queue_depth) > 200
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: Task queue backlog is growing
+          description: "{{ $value }} jobs waiting for 10 minutes; scale the worker deployment."
+
+      - alert: AgentOSHighApiErrorRate
+        expr: |
+          sum(rate(agentos_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(agentos_http_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: More than 5% of API requests are failing
+
+      - alert: AgentOSModelFailures
+        expr: |
+          sum by (provider) (rate(agentos_model_calls_total{status="error"}[10m]))
+            / clamp_min(sum by (provider) (rate(agentos_model_calls_total[10m])), 1e-9) > 0.25
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Model provider {{ $labels.provider }} is failing over 25% of calls"
+          description: The gateway falls back to other providers, but cost and latency may rise.
+
+      - alert: AgentOSTaskFailures
+        expr: sum(rate(agentos_tasks_total{status="FAILED"}[15m])) > 0.1
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: Tasks are failing at an elevated rate
+
+      - alert: AgentOSApprovalsPiling
+        expr: max(agentos_approvals_pending) > 25
+        for: 30m
+        labels: { severity: info }
+        annotations:
+          summary: "{{ $value }} approvals waiting on humans for 30 minutes"
+
+      - alert: AgentOSInjectionSpike
+        expr: sum(increase(agentos_prompt_injection_flags_total[1h])) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: Unusual volume of prompt-injection attempts in untrusted content
+
+      - alert: AgentOSSpendRate
+        expr: sum(increase(agentos_model_cost_usd_total[1h])) > 50
+        labels: { severity: warning }
+        annotations:
+          summary: "Model spend exceeded $50 in the last hour ({{ $value | printf \"%.2f\" }})"

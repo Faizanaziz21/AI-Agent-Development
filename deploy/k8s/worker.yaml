@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentos-worker
+  labels:
+    app.kubernetes.io/name: agentos-worker
+    app.kubernetes.io/part-of: agentos
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app.kubernetes.io/name: agentos-worker }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentos-worker
+        app.kubernetes.io/part-of: agentos
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      # Workers checkpoint after every step and hold a lease per task; a killed pod's tasks are
+      # re-queued by recovery once the lease expires, so a long grace period is not required.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: worker
+          image: ghcr.io/agentos/backend:latest
+          command: ["python", "-m", "app.worker"]
+          ports:
+            - { name: metrics, containerPort: 9100 }
+          envFrom:
+            - configMapRef: { name: agentos-config }
+            - secretRef: { name: agentos-secrets }
+          env:
+            - { name: AGENTOS_SEED_DEMO, value: "false" }
+            - { name: AGENTOS_WORKER_CONCURRENCY, value: "8" }
+          livenessProbe:
+            tcpSocket: { port: metrics }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 1536Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: objects, mountPath: /data/objects }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: objects
+          persistentVolumeClaim: { claimName: agentos-objects }
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentos-worker-metrics
+  labels:
+    app.kubernetes.io/name: agentos-worker
+    app.kubernetes.io/part-of: agentos
+spec:
+  clusterIP: None
+  selector: { app.kubernetes.io/name: agentos-worker }
+  ports:
+    - { name: metrics, port: 9100, targetPort: metrics }
+---
+# CPU is a weak signal for I/O-bound agent work; with KEDA installed, prefer keda-scaledobject.yaml
+# which scales on the Redis queue length instead.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agentos-worker
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: agentos-worker }
+  minReplicas: 2
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agentos-worker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: agentos-worker }

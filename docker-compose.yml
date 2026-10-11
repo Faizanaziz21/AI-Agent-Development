@@ -1,0 +1,130 @@
+# AgentOS full stack: PostgreSQL, Redis, API, horizontally scaled workers, web console and observability.
+#
+#   docker compose up --build            # console on http://localhost:8080, API docs on http://localhost:8000/docs
+#   docker compose up --scale worker=4   # more agent workers
+#
+# Grafana: http://localhost:3000 (admin / admin), Prometheus: http://localhost:9090, Jaeger: http://localhost:16686
+
+x-agentos-env: &agentos-env
+  AGENTOS_ENV: production
+  AGENTOS_DATABASE_URL: postgresql+asyncpg://agentos:agentos@postgres:5432/agentos
+  AGENTOS_REDIS_URL: redis://redis:6379/0
+  AGENTOS_JWT_SECRET: ${AGENTOS_JWT_SECRET:-compose-demo-secret-change-me-7f3a9c1e5b2d4f6a8c0e}
+  AGENTOS_SECRETS_KEY: ${AGENTOS_SECRETS_KEY:-Em3zd5G1s7smaF0nhGKxMUWJY7kwCdVhjzBzq40sY4c=}  # demo key; generate your own for real data
+  AGENTOS_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  AGENTOS_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  AGENTOS_PROVIDER_ORDER: ${AGENTOS_PROVIDER_ORDER:-openai,anthropic,local}
+  AGENTOS_AUTO_CREATE_SCHEMA: "false"
+  AGENTOS_SEED_DEMO: ${AGENTOS_SEED_DEMO:-true}
+  AGENTOS_OBJECT_STORAGE_PATH: /data/objects
+  AGENTOS_OTEL_EXPORTER_ENDPOINT: http://jaeger:4318/v1/traces
+  AGENTOS_CORS_ORIGINS: http://localhost:8080
+  AGENTOS_LOG_LEVEL: INFO
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentos
+      POSTGRES_PASSWORD: agentos
+      POSTGRES_DB: agentos
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentos -d agentos"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports: ["${AGENTOS_POSTGRES_PORT:-5432}:5432"]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: ./backend
+    image: agentos/backend:local
+    command: ["alembic", "upgrade", "head"]
+    environment: *agentos-env
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    image: agentos/backend:local
+    environment:
+      <<: *agentos-env
+      # Workers run in their own service; the API only plans, schedules and serves.
+      AGENTOS_EMBEDDED_WORKERS: "0"
+    volumes: [objects:/data/objects]
+    ports: ["${AGENTOS_API_PORT:-8000}:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  worker:
+    image: agentos/backend:local
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *agentos-env
+      AGENTOS_SEED_DEMO: "false"
+      AGENTOS_WORKER_CONCURRENCY: "8"
+    volumes: [objects:/data/objects]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      api: { condition: service_healthy }
+    deploy:
+      replicas: 2
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    image: agentos/frontend:local
+    environment:
+      AGENTOS_API_UPSTREAM: http://api:8000
+    ports: ["${AGENTOS_WEB_PORT:-8080}:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./deploy/prometheus:/etc/prometheus:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["16686:16686"]
+
+volumes:
+  pgdata:
+  redisdata:
+  objects:
