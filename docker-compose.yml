@@ -34,7 +34,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    ports: ["5432:5432"]
+    ports: ["${AGENTOS_POSTGRES_PORT:-5432}:5432"]
 
   redis:
     image: redis:7-alpine
@@ -51,6 +51,7 @@ services:
     image: agentos/backend:local
     command: ["alembic", "upgrade", "head"]
     environment: *agentos-env
+    healthcheck: { disable: true }
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -62,7 +63,7 @@ services:
       # Workers run in their own service; the API only plans, schedules and serves.
       AGENTOS_EMBEDDED_WORKERS: "0"
     volumes: [objects:/data/objects]
-    ports: ["8000:8000"]
+    ports: ["${AGENTOS_API_PORT:-8000}:8000"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -76,6 +77,11 @@ services:
       AGENTOS_SEED_DEMO: "false"
       AGENTOS_WORKER_CONCURRENCY: "8"
     volumes: [objects:/data/objects]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
     depends_on:
       api: { condition: service_healthy }
     deploy:
@@ -88,7 +94,7 @@ services:
     image: agentos/frontend:local
     environment:
       AGENTOS_API_UPSTREAM: http://api:8000
-    ports: ["8080:8080"]
+    ports: ["${AGENTOS_WEB_PORT:-8080}:8080"]
     depends_on:
       api: { condition: service_healthy }
     restart: unless-stopped
