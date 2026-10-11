@@ -1,8 +1,10 @@
 # AgentOS — System Design
 
 This document is the design-phase deliverable that preceded implementation. The
-dedicated documents in this folder (`ARCHITECTURE.md`, `AGENT_RUNTIME.md`, …)
-expand each area and describe the code as built.
+dedicated documents in this folder describe the code as built and take precedence
+where details differ: [ARCHITECTURE.md](ARCHITECTURE.md),
+[AGENT_RUNTIME.md](AGENT_RUNTIME.md), [API.md](API.md), [SECURITY.md](SECURITY.md)
+and [OPERATIONS.md](OPERATIONS.md).
 
 ## 1. System architecture
 
@@ -158,40 +160,44 @@ human approval and is audit-logged.
 
 ## 7. Security architecture
 
-- JWT auth, bcrypt passwords, RBAC (`owner`, `admin`, `operator`, `approver`, `viewer`).
+- JWT auth, bcrypt passwords, RBAC (`owner`, `admin`, `operator`, `compliance_officer`,
+  `finance_manager`, `approver`, `viewer`); approvals can require a specific role.
 - Tenant isolation: `org_id` scoping in a shared repository layer + tests.
 - Secrets: Fernet (AES-128-CBC + HMAC) encryption at rest, key from env/KMS.
 - Agents: least-privilege tool lists, policy engine, approvals.
 - Prompt injection: untrusted-data envelopes with nonces, injection scanner,
   redaction/quarantine, taint tracking for privileged tool arguments, schema-validated outputs.
-- Rate limiting (token bucket, Redis-backed in prod), input sanitisation,
+- Rate limiting (fixed one-minute window, Redis-backed when configured), per-email
+  sign-in throttling, input sanitisation,
   SSRF-safe HTTP tool, HMAC webhooks, hash-chained audit log.
 
 ## 8. Repository layout
 
 ```
-backend/            FastAPI app, workers, migrations, tests, load tests
-  app/api/          REST routes (gateway)
-  app/core/         config, db, security, events, rate limiting, telemetry
+backend/            FastAPI app, workers, migrations, tests, scripts
+  app/api/          REST routes, auth dependencies, rate-limit and observability middleware
+  app/core/         config, db, security, crypto, events, telemetry
   app/models/       SQLAlchemy models
-  app/services/     orchestrator, planning, runtime, tools, memory, rag,
-                    model_gateway, approvals, policy, evaluation, budget,
-                    audit, notifications, queue, security
-  app/seed/         default agents, tools, policies, demo datasets
-  alembic/          migrations
+  app/services/     orchestrator, planning, agents (runtime), tools, memory, rag,
+                    model_gateway, approvals, policy, budget, audit, queue,
+                    worker, adapters, security
+  app/seed/         default agents, tools, policies, demo datasets and knowledge
+  migrations/       Alembic migrations
   tests/            unit, integration, e2e
-  loadtest/         load simulation
+  scripts/          load test, HTTP smoke test, in-process demo run
 frontend/           React + TypeScript + Vite console
-infra/              k8s manifests, Prometheus, Grafana, OTel collector
+deploy/             Kubernetes manifests, Prometheus config and alerts, Grafana dashboards
+docker-compose.yml  full local stack incl. Prometheus, Grafana, Jaeger
 docs/               documentation
 ```
 
-## 9. REST API (summary — see `API.md`)
+## 9. REST API (summary — see [API.md](API.md))
 
-`/api/v1/auth`, `/orgs`, `/users`, `/agents`, `/tools`, `/policies`,
-`/knowledge`, `/projects`, `/projects/{id}/start|cancel|stream|graph|timeline`,
-`/tasks/{id}/retry|cancel|reassign`, `/executions`, `/approvals/{id}/decision`,
-`/memory`, `/entities`, `/costs`, `/audit`, `/settings`, `/webhooks/support/{org}`,
+`/api/v1/auth`, `/org`, `/users`, `/secrets`, `/agents`, `/tools`, `/policies`,
+`/knowledge`, `/projects`, `/projects/{id}/start|cancel|stream|graph|events|replay`,
+`/support/tickets`, `/tasks/{id}` (+ `/retry|cancel|reassign`), `/tool-calls`,
+`/approvals/{id}/decision`, `/memory/items`, `/memory/entities`, `/costs`, `/audit`,
+`/events/stream`, `/webhooks/support/{org_slug}`, `/system/status|recover`,
 plus `/healthz`, `/readyz`, `/metrics`.
 
 ## 10. Implementation milestones
