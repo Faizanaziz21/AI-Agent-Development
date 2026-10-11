@@ -100,7 +100,7 @@ def create_app() -> FastAPI:
         @app.get("/{path:path}", include_in_schema=False)
         async def spa(path: str):
             candidate = os.path.abspath(os.path.join(static_dir, path))
-            if path and candidate.startswith(static_dir) and os.path.isfile(candidate):
+            if path and candidate.startswith(static_dir + os.sep) and os.path.isfile(candidate):
                 return FileResponse(candidate)
             return FileResponse(os.path.join(static_dir, "index.html"))
 
