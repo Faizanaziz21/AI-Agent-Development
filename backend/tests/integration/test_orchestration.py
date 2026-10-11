@@ -227,3 +227,28 @@ async def test_cancel_project_cancels_tasks_and_expires_approvals(sentinel, scri
         appr = (await s.execute(select(Approval).where(Approval.task_id == ids["refund"]))).scalar_one()
     assert appr.status == "EXPIRED"
     assert (await task(ids["refund"])).status == "CANCELLED"
+
+
+async def test_org_quality_floor_and_revision_limit_apply_to_reviews(northwind, scripted, pool):
+    from app.models import Evaluation, Organization
+
+    primary, *_ = scripted
+    primary.scripts["t_draft"] = lambda raw: final({"draft": "v"})
+    primary.scripts["evaluate_output"] = lambda raw: final({"overall": 0.8, "scores": {"accuracy": 0.8}, "feedback": "decent", "issues": []})
+    async with session_scope() as s:
+        org = await s.get(Organization, northwind.org_id)
+        previous = dict(org.settings or {})
+        org.settings = {**previous, "quality_threshold": 0.9, "max_revisions": 0}
+    try:
+        pid, ids = await make_project(northwind.org_id, [{"key": "d", "agent": "data_analyst", "capability": "t_draft",
+                                                          "requires_review": True, "review_criteria": {"threshold": 0.6}}])
+        t = await wait_task(ids["d"], {"ESCALATED", "COMPLETED", "FAILED"})
+        assert t.status == "ESCALATED", "0.8 passes the task's own 0.6 bar but not the org's 0.9 floor"
+        async with session_scope() as s:
+            ev = (await s.execute(select(Evaluation).where(Evaluation.task_id == t.id))).scalars().all()
+        assert len(ev) == 1, "max_revisions=0 escalates without a revision round"
+        assert ev[0].threshold == 0.9 and not ev[0].passed
+        await orchestrator.cancel_project(pid, "test")
+    finally:
+        async with session_scope() as s:
+            (await s.get(Organization, northwind.org_id)).settings = previous

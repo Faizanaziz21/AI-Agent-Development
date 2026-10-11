@@ -265,7 +265,12 @@ async def handle_result(task_id: str, result: RunResult) -> None:
 async def _process_review(s, review: Task, target_id: str, requeue: list) -> None:
     target = await s.get(Task, target_id)
     out = review.output or {}
-    threshold = float((target.review_criteria or {}).get("threshold", get_settings().default_quality_threshold))
+    org = await s.get(Organization, target.org_id)
+    org_settings = (org.settings if org else None) or {}
+    criteria = target.review_criteria or {}
+    # The org setting is a floor: plans set per-task thresholds, and an org can only raise the bar.
+    threshold = max(float(criteria.get("threshold", get_settings().default_quality_threshold)),
+                    float(org_settings.get("quality_threshold") or 0.0))
     overall = float(out.get("overall", 0))
     passed = overall >= threshold
     s.add(Evaluation(org_id=target.org_id, project_id=target.project_id, task_id=target.id, evaluator_agent=review.agent_key,
@@ -282,7 +287,7 @@ async def _process_review(s, review: Task, target_id: str, requeue: list) -> Non
              message=f"{target.agent_instance or target.agent_key} ✓ {target.output_summary} (QA {overall:.2f} ≥ {threshold:.2f})",
              payload={"quality_score": overall})
         return
-    max_rev = int((target.review_criteria or {}).get("max_revisions", get_settings().max_revisions))
+    max_rev = int(criteria.get("max_revisions", org_settings.get("max_revisions", get_settings().max_revisions)))
     target.feedback = [*(target.feedback or []), {"source": "qa", "revision": target.revision, "text": out.get("feedback", ""),
                                                    "issues": out.get("issues", [])[:30], "score": overall}]
     if target.revision < max_rev:

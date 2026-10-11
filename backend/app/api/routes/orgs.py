@@ -16,7 +16,8 @@ from app.services import audit
 
 router = APIRouter(tags=["organization"])
 
-EDITABLE_SETTINGS = {"quality_threshold", "default_project_budget_usd", "communication_rules", "max_revisions", "auto_approve_low_risk"}
+EDITABLE_SETTINGS = {"quality_threshold", "default_project_budget_usd", "communication_rules", "max_revisions"}
+SETTING_RANGES = {"quality_threshold": (0.0, 1.0), "default_project_budget_usd": (0.01, 100_000.0), "max_revisions": (0, 10)}
 
 
 @router.get("/org")
@@ -48,6 +49,12 @@ async def update_org(body: OrgUpdate, p: Principal = Depends(require("settings.w
         unknown = set(body.settings) - EDITABLE_SETTINGS
         if unknown:
             raise HTTPException(422, f"unknown settings: {sorted(unknown)}")
+        for key, (lo, hi) in SETTING_RANGES.items():
+            v = body.settings.get(key)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, int | float) or not lo <= v <= hi):
+                raise HTTPException(422, f"{key} must be a number between {lo} and {hi}")
+        if "communication_rules" in body.settings and not isinstance(body.settings["communication_rules"], dict):
+            raise HTTPException(422, "communication_rules must be an object")
         org.settings = {**(org.settings or {}), **body.settings}
         changes["settings"] = body.settings
     await audit.record(s, p.org_id, actor_type="user", actor_id=p.user_id, action="org.updated", resource_type="organization",

@@ -25,6 +25,7 @@ from app.models import (
     ExecutionStep,
     ModelUsage,
     Objective,
+    Organization,
     Plan,
     Project,
     Task,
@@ -58,7 +59,7 @@ class ProjectIn(BaseModel):
     description: str = Field(default="", max_length=2000)
     template: str = "generic"
     parameters: dict[str, Any] = Field(default_factory=dict)
-    budget_usd: float = Field(default=20.0, gt=0, le=100_000)
+    budget_usd: float | None = Field(default=None, gt=0, le=100_000)
     chaos: dict[str, float] = Field(default_factory=dict)
     start: bool = True
 
@@ -113,8 +114,12 @@ async def new_project(body: ProjectIn, p: Principal = Depends(require("project.w
     if body.template not in TEMPLATES:
         raise HTTPException(422, f"template must be one of {sorted(TEMPLATES)}")
     params = {**TEMPLATES[body.template]["parameters"], **body.parameters}
+    budget = body.budget_usd
+    if budget is None:
+        org = await s.get(Organization, p.org_id)
+        budget = float((org.settings or {}).get("default_project_budget_usd") or 20.0)
     proj = await create_project(s, org_id=p.org_id, user_id=p.user_id, name=body.name, objective=body.objective, parameters=params,
-                                template=body.template, budget_usd=body.budget_usd, chaos=body.chaos, description=body.description)
+                                template=body.template, budget_usd=budget, chaos=body.chaos, description=body.description)
     await s.commit()
     if body.start:
         await orchestrator.start_project(proj.id, p.user_id)

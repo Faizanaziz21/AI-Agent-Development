@@ -148,3 +148,21 @@ async def test_health_and_metrics(client):
     assert (await client.get("/healthz")).status_code == 200
     m = await client.get("/metrics")
     assert m.status_code == 200 and "agentos_http_requests_total" in m.text
+
+
+async def test_org_settings_are_validated_and_default_project_budget_applies(client):
+    h = await login(client, "admin@northwind.example")
+    previous = (await client.get("/api/v1/org", headers=h)).json()["settings"]
+    for bad in ({"auto_approve_everything": True}, {"quality_threshold": 1.5}, {"max_revisions": "three"},
+                {"default_project_budget_usd": 0}, {"communication_rules": []}):
+        assert (await client.patch("/api/v1/org", headers=h, json={"settings": bad})).status_code == 422, bad
+    try:
+        r = await client.patch("/api/v1/org", headers=h, json={"settings": {"default_project_budget_usd": 7.5}})
+        assert r.status_code == 200
+        r = await client.post("/api/v1/projects", headers=h, json={"name": "defaults", "objective": "a valid objective text", "start": False})
+        assert r.json()["budget_usd"] == 7.5
+        r = await client.post("/api/v1/projects", headers=h,
+                              json={"name": "explicit", "objective": "a valid objective text", "budget_usd": 3, "start": False})
+        assert r.json()["budget_usd"] == 3
+    finally:
+        await client.patch("/api/v1/org", headers=h, json={"settings": previous})
