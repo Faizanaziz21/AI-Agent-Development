@@ -190,7 +190,7 @@ function Graph() {
         {data.isLoading ? <Spinner /> : data.error ? <ErrorBox error={data.error} /> : (data.data?.entities.length ?? 0) === 0 ? (
           <Empty title="No entities yet" icon={<Network className="h-5 w-5" />}>Run the B2B sales demo; agents record companies, contacts and relationships as they research.</Empty>
         ) : (
-          <EntityGraph entities={data.data!.entities} relationships={data.data!.relationships} onSelect={setSelected} />
+          <EntityGraph entities={data.data!.entities} relationships={data.data!.relationships} selected={selected} onSelect={setSelected} />
         )}
       </Card>
       <Card title={entity ? entity.name : "Entity details"} subtitle={entity ? titleCase(entity.type) : "Select a node"}>

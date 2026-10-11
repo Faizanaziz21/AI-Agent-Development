@@ -5,9 +5,15 @@ export type Point = { x: number; y: number };
  * companies pointing at a handful of industries or technologies become one enormous rank).
  * Nodes pointed at by two or more others are hubs; every other node joins the cluster of its
  * most specific hub (the one with the fewest members) and is placed on a ring around it.
- * Clusters are tiled in a grid; nodes with no hub are gridded underneath.
+ * Clusters are tiled in a grid; nodes with no hub are gridded underneath. `home` maps each
+ * clustered node to its hub so callers can tell cluster edges from cross-links.
  */
-export function clusterLayout(ids: string[], edges: { source: string; target: string }[], w: number, h: number): Map<string, Point> {
+export function clusterLayout(
+  ids: string[],
+  edges: { source: string; target: string }[],
+  w: number,
+  h: number,
+): { positions: Map<string, Point>; home: Map<string, string> } {
   const known = new Set(ids);
   const indeg = new Map<string, number>();
   const targets = new Map<string, string[]>();
@@ -20,6 +26,7 @@ export function clusterLayout(ids: string[], edges: { source: string; target: st
   const isHub = new Set(hubs);
   const members = new Map<string, string[]>(hubs.map((hub) => [hub, []]));
   const loose: string[] = [];
+  const home = new Map<string, string>();
   for (const id of ids) {
     if (isHub.has(id)) continue;
     const candidates = (targets.get(id) ?? []).filter((t) => isHub.has(t));
@@ -27,8 +34,9 @@ export function clusterLayout(ids: string[], edges: { source: string; target: st
       loose.push(id);
       continue;
     }
-    const home = candidates.reduce((a, b) => ((indeg.get(b) ?? 0) < (indeg.get(a) ?? 0) ? b : a));
-    members.get(home)!.push(id);
+    const hub = candidates.reduce((a, b) => ((indeg.get(b) ?? 0) < (indeg.get(a) ?? 0) ? b : a));
+    members.get(hub)!.push(id);
+    home.set(id, hub);
   }
 
   const gap = 24;
@@ -55,5 +63,5 @@ export function clusterLayout(ids: string[], edges: { source: string; target: st
   loose.forEach((id, i) => {
     pos.set(id, { x: (i % looseCols) * (w + gap), y: top + Math.floor(i / looseCols) * (h + gap) });
   });
-  return pos;
+  return { positions: pos, home };
 }

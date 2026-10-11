@@ -17,7 +17,7 @@ describe("clusterLayout", () => {
       ...(i % 2 ? [{ source: c, target: "intune" }] : []),
     ]);
     const ids = [...companies, ...Array.from({ length: 6 }, (_, i) => `ind${i}`), "intune", "orphan1", "orphan2"];
-    const pos = clusterLayout(ids, edges, W, H);
+    const pos = clusterLayout(ids, edges, W, H).positions;
 
     expect(pos.size).toBe(ids.length);
     const points = ids.map((id) => pos.get(id)!);
@@ -32,16 +32,17 @@ describe("clusterLayout", () => {
       { source: "b", target: "popular" },
       { source: "c", target: "popular" },
     ];
-    const pos = clusterLayout(["a", "b", "c", "industry", "popular"], edges, W, H);
+    const { positions: pos, home } = clusterLayout(["a", "b", "c", "industry", "popular"], edges, W, H);
     const dist = (p: string, q: string) => Math.hypot(pos.get(p)!.x - pos.get(q)!.x, pos.get(p)!.y - pos.get(q)!.y);
 
     expect(dist("a", "industry")).toBeLessThan(dist("a", "popular"));
     expect(dist("c", "popular")).toBeLessThan(dist("c", "industry"));
+    expect(Object.fromEntries(home)).toEqual({ a: "industry", b: "industry", c: "popular" });
   });
 
   it("grids a graph with no edges instead of stacking it in one column", () => {
     const ids = Array.from({ length: 132 }, (_, i) => `n${i}`);
-    const pos = clusterLayout(ids, [], W, H);
+    const pos = clusterLayout(ids, [], W, H).positions;
     const xs = new Set([...pos.values()].map((p) => p.x));
     const ys = new Set([...pos.values()].map((p) => p.y));
 

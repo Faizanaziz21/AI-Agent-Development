@@ -224,20 +224,19 @@ const ENTITY_COLORS: Record<string, string> = {
   technology: "#0d9488",
 };
 
-export function EntityGraph({ entities, relationships, height = 520, onSelect }: {
+export function EntityGraph({ entities, relationships, height = 520, selected, onSelect }: {
   entities: { id: string; name: string; type: string; trust_level: string }[];
   relationships: { id: string; source_entity_id: string; target_entity_id: string; type: string }[];
   height?: number;
+  selected?: string | null;
   onSelect?: (id: string) => void;
 }) {
-  const ids = new Set(entities.map((e) => e.id));
-  const rels = relationships.filter((r) => ids.has(r.source_entity_id) && ids.has(r.target_entity_id));
-  const positions = clusterLayout(
-    entities.map((e) => e.id),
-    rels.map((r) => ({ source: r.source_entity_id, target: r.target_entity_id })),
-    180,
-    48,
-  );
+  const { rels, positions, home } = useMemo(() => {
+    const ids = new Set(entities.map((e) => e.id));
+    const rels = relationships.filter((r) => ids.has(r.source_entity_id) && ids.has(r.target_entity_id));
+    const edges = rels.map((r) => ({ source: r.source_entity_id, target: r.target_entity_id }));
+    return { rels, ...clusterLayout([...ids], edges, 180, 48) };
+  }, [entities, relationships]);
   const nodes: Node[] = entities.map((e) => {
     const color = ENTITY_COLORS[e.type] ?? "#64748b";
     return {
@@ -253,20 +252,27 @@ export function EntityGraph({ entities, relationships, height = 520, onSelect }:
         borderStyle: e.trust_level === "unverified" ? "dashed" : "solid",
         background: "white",
         color: "#0f172a",
+        boxShadow: e.id === selected ? `0 0 0 3px ${color}55` : undefined,
       },
     };
   });
-  const labelled = rels.length <= 40;
-  const flowEdges: Edge[] = rels.map((r) => ({
-    id: r.id,
-    source: r.source_entity_id,
-    target: r.target_entity_id,
-    type: "straight",
-    label: labelled ? titleCase(r.type) : undefined,
-    labelStyle: { fontSize: 10, fill: "#64748b" },
-    style: { stroke: "#94a3b8", strokeOpacity: labelled ? 1 : 0.45 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
-  }));
+  // Small graphs show everything; large ones show cluster spokes plus the selected node's links.
+  const small = rels.length <= 40;
+  const flowEdges: Edge[] = rels
+    .filter((r) => small || home.get(r.source_entity_id) === r.target_entity_id || r.source_entity_id === selected || r.target_entity_id === selected)
+    .map((r) => {
+      const focused = !small && (r.source_entity_id === selected || r.target_entity_id === selected);
+      return {
+        id: r.id,
+        source: r.source_entity_id,
+        target: r.target_entity_id,
+        type: "straight",
+        label: small || focused ? titleCase(r.type) : undefined,
+        labelStyle: { fontSize: 10, fill: "#64748b" },
+        style: { stroke: focused ? "#6366f1" : "#94a3b8", strokeOpacity: small || focused ? 1 : 0.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: focused ? "#6366f1" : "#94a3b8" },
+      };
+    });
   return (
     <ReactFlowProvider>
       <div style={{ height }} className="rounded-xl border border-slate-200 bg-slate-50/50">
