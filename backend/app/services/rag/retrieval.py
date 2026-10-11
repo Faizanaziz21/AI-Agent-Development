@@ -87,7 +87,7 @@ class VectorIndexBackend(ABC):
 
 class SqlVectorBackend(VectorIndexBackend):
     """Embeddings stored with chunks; similarity computed in-process with numpy.
-    Production: PgVectorBackend (HNSW index, `ORDER BY embedding <=> :q`) — see docs/RAG_ARCHITECTURE.md."""
+    Production: PgVectorBackend (HNSW index, `ORDER BY embedding <=> :q`) — see docs/AGENT_RUNTIME.md."""
 
     def __init__(self) -> None:
         self._cache: dict[str, _OrgIndex] = {}

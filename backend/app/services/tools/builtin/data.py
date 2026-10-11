@@ -131,7 +131,7 @@ class PythonInput(BaseModel):
 @register
 class PythonSandboxTool(Tool):
     """Local sandbox: AST allow-listing + isolated interpreter subprocess with CPU/memory/file limits.
-    Production adapter: remote gVisor/Firecracker sandbox service (see docs/TOOL_FRAMEWORK.md)."""
+    Production adapter: remote gVisor/Firecracker sandbox service (see docs/SECURITY.md)."""
 
     name = "python_sandbox"
     description = "Run short Python analysis code over `data`; assign the answer to `result`. Stdlib math/statistics/json only."
