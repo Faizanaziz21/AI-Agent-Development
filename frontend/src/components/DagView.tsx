@@ -19,6 +19,7 @@ import { RotateCcw, ShieldCheck, Split } from "lucide-react";
 import { memo, useEffect, useMemo } from "react";
 
 import { titleCase, usd } from "../lib/format";
+import { clusterLayout } from "../lib/graphLayout";
 import type { AgentGraphNode, GraphEdge, GraphNode } from "../lib/types";
 import { statusStyle } from "./ui";
 
@@ -219,6 +220,8 @@ const ENTITY_COLORS: Record<string, string> = {
   product: "#16a34a",
   customer: "#d97706",
   ticket: "#e11d48",
+  industry: "#7c3aed",
+  technology: "#0d9488",
 };
 
 export function EntityGraph({ entities, relationships, height = 520, onSelect }: {
@@ -229,39 +232,39 @@ export function EntityGraph({ entities, relationships, height = 520, onSelect }:
 }) {
   const ids = new Set(entities.map((e) => e.id));
   const rels = relationships.filter((r) => ids.has(r.source_entity_id) && ids.has(r.target_entity_id));
-  const edges = rels.map((r) => ({ source: r.source_entity_id, target: r.target_entity_id }));
-  const nodes = layout(
-    entities.map((e) => {
-      const color = ENTITY_COLORS[e.type] ?? "#64748b";
-      return {
-        id: e.id,
-        position: { x: 0, y: 0 },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-        data: { label: `${e.name}\n${e.type}` } as Record<string, unknown>,
-        style: {
-          width: 180,
-          fontSize: 11,
-          whiteSpace: "pre-line" as const,
-          borderRadius: 10,
-          border: `2px solid ${color}`,
-          borderStyle: e.trust_level === "unverified" ? "dashed" : "solid",
-          background: "white",
-          color: "#0f172a",
-        },
-      };
-    }),
-    edges,
+  const positions = clusterLayout(
+    entities.map((e) => e.id),
+    rels.map((r) => ({ source: r.source_entity_id, target: r.target_entity_id })),
     180,
     48,
   );
+  const nodes: Node[] = entities.map((e) => {
+    const color = ENTITY_COLORS[e.type] ?? "#64748b";
+    return {
+      id: e.id,
+      position: positions.get(e.id) ?? { x: 0, y: 0 },
+      data: { label: `${e.name}\n${e.type}` },
+      style: {
+        width: 180,
+        fontSize: 11,
+        whiteSpace: "pre-line" as const,
+        borderRadius: 10,
+        border: `2px solid ${color}`,
+        borderStyle: e.trust_level === "unverified" ? "dashed" : "solid",
+        background: "white",
+        color: "#0f172a",
+      },
+    };
+  });
+  const labelled = rels.length <= 40;
   const flowEdges: Edge[] = rels.map((r) => ({
     id: r.id,
     source: r.source_entity_id,
     target: r.target_entity_id,
-    label: titleCase(r.type),
+    type: "straight",
+    label: labelled ? titleCase(r.type) : undefined,
     labelStyle: { fontSize: 10, fill: "#64748b" },
-    style: { stroke: "#94a3b8" },
+    style: { stroke: "#94a3b8", strokeOpacity: labelled ? 1 : 0.45 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
   }));
   return (
